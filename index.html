@@ -5,6 +5,7 @@
   <title>3D Turbine Viewer</title>
   <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
 
+  <!-- Load Mapbox GL JS v2.13.0 (supports 3D model layers) -->
   <script src="https://api.mapbox.com/mapbox-gl-js/v2.13.0/mapbox-gl.js"></script>
   <link href="https://api.mapbox.com/mapbox-gl-js/v2.13.0/mapbox-gl.css" rel="stylesheet" />
 
@@ -18,12 +19,14 @@
 <div id="map"></div>
 
 <script>
+// Your Mapbox public access token
 mapboxgl.accessToken = "pk.eyJ1IjoiZ3JlaWdydXNzZWxsIiwiYSI6ImNtbGY0ZjduYTAwdGwzZnNmNWNkbXJ4NTkifQ.5RoqcgVSVJ1gsA6WAXa0YQ";
 
+// Create map
 const map = new mapboxgl.Map({
   container: 'map',
   style: 'mapbox://styles/mapbox/satellite-v9',
-  center: [-2.25, 57.349],
+  center: [-2.25, 57.349],    // Adjust if needed
   zoom: 13,
   pitch: 70,
   bearing: 20,
@@ -32,7 +35,9 @@ const map = new mapboxgl.Map({
 
 map.on('load', () => {
 
-  // Load terrain
+  console.log("Map loaded: adding terrain source…");
+
+  // Terrain DEM source
   map.addSource("mapbox-dem", {
     type: "raster-dem",
     url: "mapbox://mapbox.terrain-rgb",
@@ -42,7 +47,7 @@ map.on('load', () => {
 
   map.setTerrain({ source: "mapbox-dem", exaggeration: 1.0 });
 
-  // Load turbine coordinates
+  // Load turbine coordinates file
   fetch("data/turbines.txt")
     .then(res => res.text())
     .then(txt => {
@@ -51,17 +56,19 @@ map.on('load', () => {
 
       lines.forEach((line, i) => {
 
-        const [type, bearing, name, lat, lon, elev] =
+        const [type, bearing, name, lat, lon, elevFile] =
           line.split(",").map(s => s.trim());
 
         const lng = Number(lon);
         const latitude = Number(lat);
-
         const modelPosition = [lng, latitude];
 
-        // Terrain elevation (Mapbox v2 supports this)
+        // Query Mapbox terrain elevation at this lat/lon
         const terrainElevation = map.queryTerrainElevation(modelPosition) || 0;
 
+        console.log("Placing turbine", name, "at", modelPosition, "elev:", terrainElevation);
+
+        // Source for each turbine
         map.addSource("turbine-src-" + i, {
           type: "geojson",
           data: {
@@ -73,19 +80,18 @@ map.on('load', () => {
           }
         });
 
+        // 3D model layer
         map.addLayer({
           id: "turbine-layer-" + i,
           type: "model",
           source: "turbine-src-" + i,
           layout: {},
           paint: {
-            "model-scale": [150, 150, 150],
+            "model-scale": [150, 150, 150],         // Adjust size here
             "model-rotation": [0, Number(bearing), 0],
-
-            // ⭐ Mapbox GL JS v2 uses model-altitude
-            "model-altitude": terrainElevation
+            "model-altitude": terrainElevation      // Correct positioning on ground
           },
-          model: "models/turbine.glb"
+          model: "models/turbine.glb"               // Path to your GLB
         });
 
       }); // end forEach
@@ -93,7 +99,6 @@ map.on('load', () => {
     }); // end fetch
 
 }); // end map load
-
 </script>
 
 </body>
