@@ -50,29 +50,37 @@
           const [type, bearing, name, lat, lon, elev] =
             line.split(",").map(s => s.trim());
 
-          map.addSource("turbine-src-" + i, {
-            type: "geojson",
-            data: {
-              type: "Feature",
-              geometry: {
-                type: "Point",
-                coordinates: [parseFloat(lon), parseFloat(lat)]
-              }
-            }
-          });
+
+ // Query terrain Z-value (this is CRITICAL in Mapbox GL JS v3)
+  const terrainElevation = map.queryTerrainElevation(modelPosition, { exaggerated: false }) || 0;
+
+  map.addSource("turbine-src-" + i, {
+    type: "geojson",
+    data: {
+      type: "Feature",
+      geometry: {
+        type: "Point",
+        coordinates: modelPosition
+      }
+    }
+  });
 
   map.addLayer({
-  id: "turbine-layer-" + i,
-  type: "model",
-  source: "turbine-src-" + i,
-  layout: {},
-  paint: {
-    "model-scale": [150, 150, 150],
-    "model-rotation": [0, Number(bearing), 0],
-    "model-translation": [0, 0, Number(elev)]
-  },
-  model: "models/turbine.glb"
+    id: "turbine-layer-" + i,
+    type: "model",
+    source: "turbine-src-" + i,
+    layout: {},
+    paint: {
+      "model-scale": [150, 150, 150],
+      "model-rotation": [0, Number(bearing), 0],
+
+      // ⭐ THIS is the correct Mapbox v3 vertical positioning
+      "model-translation": [0, 0, terrainElevation]
+    },
+    model: "models/turbine.glb"
+  });
 });
+
 
         });
       });
@@ -82,3 +90,4 @@
 </body>
 
 </html>
+
