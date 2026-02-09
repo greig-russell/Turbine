@@ -7,7 +7,7 @@
 
   <!-- Mapbox GL JS v3 -->
   <link href="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.css" rel="stylesheet" />
-  <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js" defer></script>
 
   <style>
     html, body { height: 100%; margin: 0; }
@@ -20,120 +20,123 @@
   </style>
 </head>
 <body>
-<div id="map"></div>
-<div class="debug" id="dbg">Loading…</div>
+  <div id="map"></div>
+  <div class="debug" id="dbg">Loading…</div>
 
-<script>
-  // --- Adjust these two if needed ---
-  const START_SCALE = 20;   // try 5..40 until it looks right
-  const zOffset = 0;        // lift/lower model (meters): try 5..15 if it looks buried
+  <script>
+    // --- Tune these if needed ---
+    const START_SCALE = 20;   // Try 5..40 to size the turbine
+    const zOffset = 0;        // Lift model a few meters if needed (e.g., 5 or 10)
 
-  mapboxgl.accessToken = "pk.eyJ1IjoiZ3JlaWdydXNzZWxsIiwiYSI6ImNtbGY0ZjduYTAwdGwzZnNmNWNkbXJ4NTkifQ.5RoqcgVSVJ1gsA6WAXa0YQ";
+    mapboxgl.accessToken = "pk.eyJ1IjoiZ3JlaWdydXNzZWxsIiwiYSI6ImNtbGY0ZjduYTAwdGwzZnNmNWNkbXJ4NTkifQ.5RoqcgVSVJ1gsA6WAXa0YQ";
 
-  const map = new mapboxgl.Map({
-    container: 'map',
-    style: 'mapbox://styles/mapbox/standard-satellite',
-    center: [-2.250545, 57.349046],
-    zoom: 13,
-    pitch: 70,
-    bearing: 20,
-    antialias: true
-  });
-
-  // Utility: promise for a one-time event
-  const once = (target, ev) => new Promise(res => target.once(ev, res));
-
-  map.on('style.load', async () => {
-    const dbg = document.getElementById('dbg');
-    dbg.textContent = `GL JS ${mapboxgl.version} | style loaded`;
-
-    // 1) DEM terrain
-    map.addSource('mapbox-dem', {
-      type: 'raster-dem',
-      url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-      tileSize: 512,
-      maxzoom: 14
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/standard-satellite',
+      center: [-2.250545, 57.349046],
+      zoom: 13,
+      pitch: 70,
+      bearing: 20,
+      antialias: true
     });
-    map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 });
 
-    // 2) Register model (GLB)
-    map.addModel('turbine', 'models/turbine.glb'); // <-- your model path
-    dbg.textContent = 'Model registered… loading coordinates';
+    // Promise wrapper for one-time event
+    const once = (target, ev) => new Promise(res => target.once(ev, res));
 
-    // 3) Load coordinates file
-    const text = await fetch('data/turbines.txt').then(r => r.text());
-    const lines = text.trim().split(/\r?\n/);
+    map.on('style.load', async () => {
+      const dbg = document.getElementById('dbg');
+      dbg.textContent = `GL JS ${mapboxgl.version} | style loaded`;
 
-    const features = [];
-    for (let i = 0; i < lines.length; i++) {
-      const raw = lines[i].trim();
-      if (!raw || raw.startsWith('#')) continue;
-      const parts = raw.split(',').map(s => s.trim());
-      if (parts.length < 6) continue;
-
-      const type = parts[0];                // not used in this minimal version
-      const bearing = Number(parts[1] || 0);
-      const name = parts[2] || `T${i+1}`;
-      const lat  = Number(parts[3]);
-      const lon  = Number(parts[4]);
-
-      features.push({
-        type: 'Feature',
-        id: name, // promotes to feature-state id
-        properties: { name, bearing, type },
-        geometry: { type: 'Point', coordinates: [lon, lat] }
+      // 1) DEM terrain for elevation queries
+      map.addSource('mapbox-dem', {
+        type: 'raster-dem',
+        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+        tileSize: 512,
+        maxzoom: 14
       });
-    }
+      map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 });
 
-    // 4) Source with promoteId
-    map.addSource('turbines', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features },
-      promoteId: 'id'
-    });
+      // 2) Register your GLB model
+      map.addModel('turbine', 'models/turbine.glb');
 
-    // (Optional) pre-seed z=0 to avoid initial null
-    for (const f of features) {
-      map.setFeatureState({ source: 'turbines', id: f.id }, { z: 0 });
-    }
+      dbg.textContent = 'Model registered… loading coordinates';
 
-    // 5) Model layer using feature-state for Z (with coalesce default)
-     type: 'model',
-      source: 'turbines',
-      layout: {
-        'model-id': 'turbine'
-      },
-      paint: {
-        // If your model lies down, rotate X by 90 deg:
-        // 'model-rotation': [90, ['get', 'bearing'], 0],
-        'model-rotation': [0, ['get', 'bearing'], 0],
-        'model-translation': [0, 0, ['+', ['coalesce', ['feature-state', 'z'], 0], zOffset]],
-        'model-scale': [START_SCALE, START_SCALE, START_SCALE]
+      // 3) Load coordinates file
+      const text = await fetch('data/turbines.txt').then(r => r.text());
+      const lines = text.trim().split(/\r?\n/);
+
+      const features = [];
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i].trim();
+        if (!raw || raw.startsWith('#')) continue;
+        const parts = raw.split(',').map(s => s.trim());
+        if (parts.length < 6) continue;
+
+        const type = parts[0];               // unused here
+        const bearing = Number(parts[1] || 0);
+        const name = parts[2] || `T${i+1}`;
+        const lat  = Number(parts[3]);
+        const lon  = Number(parts[4]);
+
+        features.push({
+          type: 'Feature',
+          id: name, // promoteId target
+          properties: { name, bearing, type },
+          geometry: { type: 'Point', coordinates: [lon, lat] }
+        });
       }
+
+      // 4) Source with promoteId
+      map.addSource('turbines', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+        promoteId: 'id'
+      });
+
+      // Pre-seed z=0 to avoid initial null during first paint
+      for (const f of features) {
+        map.setFeatureState({ source: 'turbines', id: f.id }, { z: 0 });
+      }
+
+      // 5) Model layer
+      map.addLayer({
+        id: 'turbine-models',
+        type: 'model',
+        source: 'turbines',
+        layout: {
+          'model-id': 'turbine'
+        },
+        paint: {
+          // If model lies down, change to [90, ['get','bearing'], 0]
+          'model-rotation': [0, ['get', 'bearing'], 0],
+          'model-translation': [0, 0, ['+', ['coalesce', ['feature-state', 'z'], 0], zOffset]],
+          'model-scale': [START_SCALE, START_SCALE, START_SCALE]
+        }
+      });
+
+      // 6) After terrain is ready, set real Z
+      await once(map, 'idle');
+
+      let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+
+      for (const f of features) {
+        const [lng, lat] = f.geometry.coordinates;
+        const z = map.queryTerrainElevation([lng, lat], { exaggerated: false }) || 0;
+        map.setFeatureState({ source: 'turbines', id: f.id }, { z });
+
+        minLng = Math.min(minLng, lng); minLat = Math.min(minLat, lat);
+        maxLng = Math.max(maxLng, lng); maxLat = Math.max(maxLat, lat);
+        console.log(`Placed ${f.id} @ [${lng.toFixed(6)}, ${lat.toFixed(6)}], z=${Math.round(z)} m`);
+      }
+
+      if (features.length) {
+        map.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
+          padding: 120, pitch: 70, bearing: 20, duration: 1200
+        });
+      }
+
+      dbg.textContent = `Loaded ${features.length} turbine(s).`;
     });
-
-    // 6) After terrain tiles are ready, set per-feature Z from DEM
-    await once(map, 'idle');
-
-    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
-
-    for (const f of features) {
-      const [lng, lat] = f.geometry.coordinates;
-      const z = map.queryTerrainElevation([lng, lat], { exaggerated: false }) || 0;
-      map.setFeatureState({ source: 'turbines', id: f.id }, { z });
-
-      minLng = Math.min(minLng, lng); minLat = Math.min(minLat, lat);
-      maxLng = Math.max(maxLng, lng); maxLat = Math.max(maxLat, lat);
-      console.log(`Placed ${f.id} @ [${lng.toFixed(6)}, ${lat.toFixed(6)}], z=${Math.round(z)} m`);
-    }
-
-    // 7) Fit to all turbines
-    if (features.length) {
-      map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 120, pitch: 70, bearing: 20, duration: 1200 });
-    }
-
-    dbg.textContent = `Loaded ${features.length} turbine(s).`;
-  });
-</script>
+  </script>
 </body>
 </html>
