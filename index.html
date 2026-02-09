@@ -2,141 +2,23 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>3D Turbine Viewer (v3 model layer)</title>
-  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <!-- Mapbox GL JS v3 -->
-  <link href="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.css" rel="stylesheet" />
-  <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js"></script>
-  <style>
-    html, body { height:100%; margin:0; }
-    #map { width:100%; height:100%; }
-    .debug {
-      position:absolute; top:8px; left:8px; z-index:1; background:#0008; color:#fff; padding:6px 8px;
-      font:12px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; border-radius:4px;
-    }
-  </style>
+  <title>Turbine Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  plugin/turbine-map.js</script>
+  <style>html,body{height:100%;margin:0}</style>
 </head>
 <body>
-<div id="map"></div>
-<div class="debug" id="dbg">Loading…</div>
-
-<script>
-  mapboxgl.accessToken = "pk.eyJ1IjoiZ3JlaWdydXNzZWxsIiwiYSI6ImNtbGY0ZjduYTAwdGwzZnNmNWNkbXJ4NTkifQ.5RoqcgVSVJ1gsA6WAXa0YQ";
-
-  // Use a v3 style (Standard / Standard Satellite) – these are designed to work with model layers.
-  // You can switch to 'mapbox://styles/mapbox/standard' if you prefer the non-satellite basemap.
-  const map = new mapboxgl.Map({
-    container: 'map',
-    style: 'mapbox://styles/mapbox/standard-satellite',
-    center: [-2.250545, 57.349046],
-    zoom: 13,
-    pitch: 70,
-    bearing: 20,
-    antialias: true
-  });
-
-  // Utility: wait for a single event as a promise (handy with v3)
-  const once = (target, ev) => new Promise(res => target.once(ev, res));
-
-  map.on('style.load', async () => {
-    const dbg = document.getElementById('dbg');
-    dbg.textContent = `GL JS ${mapboxgl.version} | style loaded`;
-
-    // 1) Terrain (raster-dem) – required for queryTerrainElevation
-    map.addSource('mapbox-dem', {
-      type: 'raster-dem',
-      // v3 examples use mapbox.mapbox-terrain-dem-v1
-      url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-      tileSize: 512,
-      maxzoom: 14
-    });
-    map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 });
-
-    // 2) Register your GLB model with a model id (v3 API)
-    //    This lets you reference it from a model layer via layout: { "model-id": "turbine" }.
-    map.addModel('turbine', 'models/turbine.glb'); // <-- your model path
-    dbg.textContent = 'Model registered… loading coordinates';
-
-    // 3) Load your turbine coordinate file
-    const text = await fetch('data/turbines.txt').then(r => r.text());
-    const lines = text.trim().split(/\r?\n/);
-
-    // Build a FeatureCollection from the file. We’ll attach the bearing as a property,
-    // and assign each feature an id so we can set feature-state (for Z).
-    const features = [];
-    for (let i = 0; i < lines.length; i++) {
-      const raw = lines[i].trim();
-      if (!raw || raw.startsWith('#')) continue;
-      const parts = raw.split(',').map(s => s.trim());
-      if (parts.length < 6) continue;
-
-      const type = parts[0];           // e.g. 0/1 – not used here, but available if you want to switch models
-      const bearing = Number(parts[1]);
-      const name = parts[2] || `T${i+1}`;
-      const lat = Number(parts[3]);
-      const lon = Number(parts[4]);
-      // parts[5] is an elevation value from the file; we ignore it and query Mapbox terrain instead.
-
-      features.push({
-        type: 'Feature',
-        id: name, // promoteId target
-        properties: { name, bearing, type },
-        geometry: { type: 'Point', coordinates: [lon, lat] }
-      });
-    }
-
-    map.addSource('turbines', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features },
-      // promote the "id" property so we can use setFeatureState easily
-      promoteId: 'id'
-    });
-
-    // 4) Add the model layer (v3) that uses your registered model-id
-    // Paint:
-    // - model-rotation uses the per-feature "bearing" property.
-    // - model-translation Z comes from feature-state 'z' (we fill it below via queryTerrainElevation).
-    // - model-scale controls size; adjust if your GLB is tiny/huge.
-    map.addLayer({
-      id: 'turbine-models',
-      type: 'model',
-      source: 'turbines',
-      layout: {
-        'model-id': 'turbine'
-      },
-      paint: {
-        'model-rotation': [90, ['get', 'bearing'], 0],
-        'model-translation': [0, 0, ['feature-state', 'z']],
-        'model-scale': [1, 1, 1]   // tweak to match your desired hub/tip size
-      }
-    });
-
-    // 5) Ensure terrain tiles are ready, then set Z (height) per feature using feature-state.
-    await once(map, 'idle');
-
-    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
-
-    for (const f of features) {
-      const [lng, lat] = f.geometry.coordinates;
-      // The {exaggerated:false} option returns real elevations regardless of any exaggeration set on terrain.
-      const z = map.queryTerrainElevation([lng, lat], { exaggerated: false }) || 0;
-
-      map.setFeatureState({ source: 'turbines', id: f.id }, { z });
-
-      // Track bounds so we can fit the view nicely
-      minLng = Math.min(minLng, lng); minLat = Math.min(minLat, lat);
-      maxLng = Math.max(maxLng, lng); maxLat = Math.max(maxLat, lat);
-      console.log(`Placed ${f.id} @ [${lng.toFixed(6)}, ${lat.toFixed(6)}], z=${Math.round(z)} m`);
-    }
-
-    // 6) Optional: fit the camera to all turbines
-    if (features.length) {
-      map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 120, pitch: 70, bearing: 20, duration: 1200 });
-    }
-
-    document.getElementById('dbg').textContent = `Loaded ${features.length} turbine(s).`;
-  });
-</script>
+  <!-- The map will auto-center to the first turbine if "centre" is omitted -->
+  <turbine-map
+    mapbox-token="YOUR_MAPBOX_TOKEN"
+    width="100%"
+    height="100%"
+    coordinates-url="data/turbines.txt"
+    model-url="models/turbine.glb"
+    scale="3"
+    rotation-x="90"
+    rotation-y="0"
+    rotation-z="0">
+  </turbine-map>
 </body>
 </html>
-
