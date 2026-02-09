@@ -18,77 +18,83 @@
 <div id="map"></div>
 
 <script>
-  mapboxgl.accessToken = "pk.eyJ1IjoiZ3JlaWdydXNzZWxsIiwiYSI6ImNtbGY0ZjduYTAwdGwzZnNmNWNkbXJ4NTkifQ.5RoqcgVSVJ1gsA6WAXa0YQ";
+mapboxgl.accessToken = "pk.eyJ1IjoiZ3JlaWdydXNzZWxsIiwiYSI6ImNtbGY0ZjduYTAwdGwzZnNmNWNkbXJ4NTkifQ.5RoqcgVSVJ1gsA6WAXa0YQ";
 
-  const map = new mapboxgl.Map({
-    container: 'map',
-    style: 'mapbox://styles/mapbox/satellite-v9',
-    center: [-2.25, 57.349],
-    zoom: 13,
-    pitch: 70,
-    bearing: 20,
-    antialias: true
-  });
-
-  map.on('load', () => {
-    // Load terrain
-    map.addSource("mapbox-dem", {
-      type: "raster-dem",
-      url: "mapbox://mapbox.terrain-rgb",
-      tileSize: 512,
-      maxzoom: 14
-    });
-    map.setTerrain({ source: "mapbox-dem", exaggeration: 1.0 });
-
-    // Load turbine coordinates
-    fetch("data/turbines.txt")
-      .then(res => res.text())
-      .then(txt => {
-        const lines = txt.trim().split("\n");
-
-        lines.forEach((line, i) => {
-          const [type, bearing, name, lat, lon, elev] =
-            line.split(",").map(s => s.trim());
-
-
- // Query terrain Z-value (this is CRITICAL in Mapbox GL JS v3)
-  const terrainElevation = map.queryTerrainElevation(modelPosition, { exaggerated: false }) || 0;
-
-  map.addSource("turbine-src-" + i, {
-    type: "geojson",
-    data: {
-      type: "Feature",
-      geometry: {
-        type: "Point",
-        coordinates: modelPosition
-      }
-    }
-  });
-
-  map.addLayer({
-    id: "turbine-layer-" + i,
-    type: "model",
-    source: "turbine-src-" + i,
-    layout: {},
-    paint: {
-      "model-scale": [150, 150, 150],
-      "model-rotation": [0, Number(bearing), 0],
-
-      // ⭐ THIS is the correct Mapbox v3 vertical positioning
-      "model-translation": [0, 0, terrainElevation]
-    },
-    model: "models/turbine.glb"
-  });
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/satellite-v9',
+  center: [-2.25, 57.349],
+  zoom: 13,
+  pitch: 70,
+  bearing: 20,
+  antialias: true
 });
 
+map.on('load', () => {
 
-        });
-      });
+  // Load terrain
+  map.addSource("mapbox-dem", {
+    type: "raster-dem",
+    url: "mapbox://mapbox.terrain-rgb",
+    tileSize: 512,
+    maxzoom: 14
   });
+
+  map.setTerrain({ source: "mapbox-dem", exaggeration: 1.0 });
+
+  // Load turbine coordinates
+  fetch("data/turbines.txt")
+    .then(res => res.text())
+    .then(txt => {
+
+      const lines = txt.trim().split("\n");
+
+      lines.forEach((line, i) => {
+
+        const [type, bearing, name, lat, lon, elev] =
+          line.split(",").map(s => s.trim());
+
+        const lng = Number(lon);
+        const latitude = Number(lat);
+
+        const modelPosition = [lng, latitude];
+
+        // Terrain elevation (Mapbox v2 supports this)
+        const terrainElevation = map.queryTerrainElevation(modelPosition) || 0;
+
+        map.addSource("turbine-src-" + i, {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: modelPosition
+            }
+          }
+        });
+
+        map.addLayer({
+          id: "turbine-layer-" + i,
+          type: "model",
+          source: "turbine-src-" + i,
+          layout: {},
+          paint: {
+            "model-scale": [150, 150, 150],
+            "model-rotation": [0, Number(bearing), 0],
+
+            // ⭐ Mapbox GL JS v2 uses model-altitude
+            "model-altitude": terrainElevation
+          },
+          model: "models/turbine.glb"
+        });
+
+      }); // end forEach
+
+    }); // end fetch
+
+}); // end map load
+
 </script>
 
 </body>
-
 </html>
-
-
