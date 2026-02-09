@@ -5,30 +5,28 @@
   <title>Turbine Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Mapbox GL JS v3 CSS — explicitly included to avoid missing-CSS warning -->
-  https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.css
+  <!-- Required CSS for GL JS (prevents the "missing CSS" warning) -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.css" rel="stylesheet" />
 
-  <!-- Mapbox GL JS v3 script (optional here; the component will load it if absent).
-       Keeping it explicit is fine and avoids any race conditions. -->
-  https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js</script>
+  <!-- Optional to include explicitly; component will also load it if absent -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js"></script>
 
   <!-- Your web component -->
   <script src="plugins/turbine-map.js"></script>
 
   <style>
     html, body { height: 100%; margin: 0; }
-    /* Make the element fill the viewport */
-    turbine-map { display:block; width: 100vw; height: 100vh; }
+    /* Fill the viewport so the map is tall enough */
+    turbine-map { display: block; width: 100vw; height: 100vh; }
   </style>
 </head>
 <body>
 
   <!--
-    Notes:
-      • Omit "centre" to auto-centre to the first turbine (as requested).
-      • Start with a larger scale (e.g., 20) to ensure visibility; tune down to match true dimensions.
-      • rotation-x defaults to 90 to stand models upright; adjust if your GLB uses different axes.
-      • z-offset can lift/lower the model a few meters if its origin is mid-tower.
+    • Omit "centre" to auto-centre to the first turbine (your request).
+    • Start with scale=20 so it's obvious; then tune down to realistic dimensions.
+    • rotation-x=90 makes most upright; adjust rotation-y by 90/180 if facing the wrong way.
+    • z-offset raises/lowers the model a few meters if its origin is mid-tower.
   -->
   <turbine-map
     mapbox-token="pk.eyJ1IjoiZ3JlaWdydXNzZWxsIiwiYSI6ImNtbGY0ZjduYTAwdGwzZnNmNWNkbXJ4NTkifQ.5RoqcgVSVJ1gsA6WAXa0YQ"
@@ -45,4 +43,3 @@
 
 </body>
 </html>
-
