@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>3D Turbine Viewer</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css" rel="stylesheet" />
+
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { width: 100vw; height: 100vh; }
+  </style>
+</head>
+
+<body>
+<div id="map"></div>
+
+<script>
+  mapboxgl.accessToken = "pk.eyJ1IjoiZ3JlaWdydXNzZWxsIiwiYSI6ImNtbGY0ZjduYTAwdGwzZnNmNWNkbXJ4NTkifQ.5RoqcgVSVJ1gsA6WAXa0YQ";
+
+  const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/satellite-v9',
+    center: [-2.25, 57.349],
+    zoom: 13,
+    pitch: 70,
+    bearing: 20,
+    antialias: true
+  });
+
+  map.on('load', () => {
+    // Load terrain
+    map.addSource("mapbox-dem", {
+      type: "raster-dem",
+      url: "mapbox://mapbox.terrain-rgb",
+      tileSize: 512,
+      maxzoom: 14
+    });
+    map.setTerrain({ source: "mapbox-dem", exaggeration: 1.0 });
+
+    // Load turbine coordinates
+    fetch("data/turbines.txt")
+      .then(res => res.text())
+      .then(txt => {
+        const lines = txt.trim().split("\n");
+
+        lines.forEach((line, i) => {
+          const [type, bearing, name, lat, lon, elev] =
+            line.split(",").map(s => s.trim());
+
+          map.addSource("turbine-src-" + i, {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: [parseFloat(lon), parseFloat(lat)]
+              }
+            }
+          });
+
+          map.addLayer({
+            id: "turbine-layer-" + i,
+            type: "model",
+            source: "turbine-src-" + i,
+            layout: {},
+            paint: {
+              "model-scale": [150,150,150],     // adjust for hub height
+              "model-rotation": [0, Number(bearing), 0],
+              "model-altitude": Number(elev)
+            },
+            model: "models/turbine.glb"
+          });
+        });
+      });
+  });
+</script>
+
+</body>
+</html>
