@@ -61,22 +61,24 @@
             }
           });
 
-          map.addLayer({
-            id: "turbine-layer-" + i,
-            type: "model",
-            source: "turbine-src-" + i,
-            layout: {},
-            paint: {
-              "model-scale": [150,150,150],     // adjust for hub height
-              "model-rotation": [0, Number(bearing), 0],
-              "model-altitude": Number(elev)
-            },
-            model: "models/turbine.glb"
-          });
+  map.addLayer({
+  id: "turbine-layer-" + i,
+  type: "model",
+  source: "turbine-src-" + i,
+  layout: {},
+  paint: {
+    "model-scale": [150, 150, 150],
+    "model-rotation": [0, Number(bearing), 0],
+    "model-translation": [0, 0, Number(elev)]
+  },
+  model: "models/turbine.glb"
+});
+
         });
       });
   });
 </script>
 
 </body>
+
 </html>
