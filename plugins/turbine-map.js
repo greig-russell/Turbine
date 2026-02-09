@@ -5,7 +5,266 @@
 
   // Utility: inject <link> / <script> once
   function ensureLink(href) {
+    if ([...document.querySelectorAll('link[rel="stylesheet// plugin/turbine-map.js
+(() => {
+  const MAPBOX_JS = "https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js";
+  const MAPBOX_CSS = "https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.css";
+
+  // Inject a <link rel="stylesheet"> if missing
+  function ensureLink(href) {
     if ([...document.querySelectorAll('link[rel="stylesheet"]')].some(l => l.href === href)) return Promise.resolve();
+    return new Promise(res => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      link.onload = () => res();
+      document.head.appendChild(link);
+    });
+  }
+  // Inject a <script> if missing
+  function ensureScript(src) {
+    if ([...document.scripts].some(s => s.src === src)) return Promise.resolve();
+    return new Promise(res => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => res();
+      document.head.appendChild(s);
+    });
+  }
+
+  // Small helper to await a single event
+  const once = (target, ev) => new Promise(res => target.once(ev, res));
+
+  class TurbineMap extends HTMLElement {
+    static get observedAttributes() {
+      return [
+        'mapbox-token','width','height','centre',
+        'coordinates-url','model-url','model-url2',
+        'scale','rotation-x','rotation-y','rotation-z',
+        'style-url','z-offset'
+      ];
+    }
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' });
+      this._root = document.createElement('div');
+      this._root.className = 'map-holder';
+      this._root.innerHTML = `
+        <style>
+          :host { display:block; }
+          .map-holder { border:1px solid #999; background:#fff; }
+          .map-container { width:100%; min-height:300px; position:relative; }
+          .msg {
+            position:absolute; left:8px; top:8px; z-index:2;
+            background:#0008; color:#fff; padding:6px 8px; border-radius:4px;
+            font:12px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+          }
+          #map { width:100%; height:100%; }
+        </style>
+        <div class="map-container">
+          <div class="msg" id="msg">Loading…</div>
+          <div id="map"></div>
+        </div>
+      `;
+      this.shadowRoot.appendChild(this._root);
+      this._map = null;
+    }
+
+    attribute(name, fallback) {
+      const v = this.getAttribute(name);
+      return (v === null || v === undefined || v === '') ? fallback : v;
+    }
+
+    async connectedCallback() {
+      try {
+        // 1) Apply desired size
+        const w = this.attribute('width', '100%');
+        const h = this.attribute('height', '600px');
+        this.style.width = w;
+        this.style.height = h;
+        // ensure the internal container fills host height
+        this.shadowRoot.querySelector('.map-container').style.height = '100%';
+
+        // 2) Ensure Mapbox GL v3 CSS+JS present (CSS removes warning; JS initializes API)
+        await ensureLink(MAPBOX_CSS); // See API note on including mapbox-gl.css [3](https://docs.mapbox.com/mapbox-gl-js/api/)
+        if (!window.mapboxgl) await ensureScript(MAPBOX_JS);
+
+        // 3) Read attributes
+        const token = this.attribute('mapbox-token');
+        if (!token) throw new Error('Missing attribute: mapbox-token');
+        mapboxgl.accessToken = token;
+
+        const coordsUrl = this.attribute('coordinates-url');
+        if (!coordsUrl) throw new Error('Missing attribute: coordinates-url');
+
+        const modelUrl  = this.attribute('model-url');
+        if (!modelUrl) throw new Error('Missing attribute: model-url');
+
+        const modelUrl2 = this.getAttribute('model-url2'); // optional second model
+        const scale     = Number(this.attribute('scale', '10')); // start large for visibility; tune later
+        const rx        = Number(this.attribute('rotation-x', '90'));
+        const ry        = Number(this.attribute('rotation-y', '0'));
+        const rz        = Number(this.attribute('rotation-z', '0'));
+        const zOffset   = Number(this.attribute('z-offset', '0')); // optional vertical nudge (m)
+        const styleUrl  = this.attribute('style-url', 'mapbox://styles/mapbox/standard-satellite'); // v3 style [2](https://docs.mapbox.com/mapbox-gl-js/example/add-3d-models-using-geojson-source/)
+
+        const msg = this.shadowRoot.getElementById('msg');
+        msg.textContent = 'Loading coordinates…';
+
+        // 4) Load & parse coordinate file: type,bearing,name,lat,lon,(elev-ignored)
+        const text = await fetch(coordsUrl, { cache: 'no-cache' }).then(r => {
+          if (!r.ok) throw new Error(`Failed to load coordinates: ${r.status}`);
+          return r.text();
+        });
+        const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+        const features = [];
+        for (let i = 0; i < lines.length; i++) {
+          const raw = lines[i];
+          if (!raw || raw.startsWith('#')) continue;
+          const parts = raw.split(',').map(s => s.trim());
+          if (parts.length < 5) continue;
+          const type    = parts[0];
+          const bearing = Number(parts[1] || 0);
+          const name    = parts[2] || `T${i+1}`;
+          const lat     = Number(parts[3]);
+          const lon     = Number(parts[4]);
+          if (!isFinite(lat) || !isFinite(lon)) continue;
+
+          features.push({
+            type: 'Feature',
+            id: name, // promoteId target
+            properties: { id: name, name, type: String(type), bearing },
+            geometry: { type: 'Point', coordinates: [lon, lat] }
+          });
+        }
+        if (!features.length) throw new Error('No valid features found in coordinates file');
+
+        // 5) Determine centre: attribute 'centre' or first turbine (as requested)
+        const firstLngLat = features[0].geometry.coordinates.slice();
+        const centreAttr = this.getAttribute('centre');
+        const centre = centreAttr ? centreAttr.split(',').map(s => Number(s.trim())) : firstLngLat;
+
+        // 6) Build map
+        msg.textContent = 'Initializing map…';
+        const mapContainer = this.shadowRoot.getElementById('map');
+        this._map = new mapboxgl.Map({
+          container: mapContainer,
+          style: styleUrl,                // v3 style suitable for model layers [2](https://docs.mapbox.com/mapbox-gl-js/example/add-3d-models-using-geojson-source/)
+          center: centre,
+          zoom: 13,
+          pitch: 70,
+          bearing: 20,
+          antialias: true
+        });
+        // (optional) expose for console debugging
+        window.turbineMap = this._map;
+
+        this._map.on('style.load', async () => {
+          try {
+            msg.textContent = 'Adding terrain…';
+
+            // 7) DEM + terrain (required for queryTerrainElevation) [1](https://docs.mapbox.com/mapbox-gl-js/example/query-terrain-elevation/)
+            this._map.addSource('mapbox-dem', {
+              type: 'raster-dem',
+              url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+              tileSize: 512,
+              maxzoom: 14
+            });
+            this._map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.0 });
+
+            // 8) Register model(s) (v3 model API) and add source with promoteId [2](https://docs.mapbox.com/mapbox-gl-js/example/add-3d-models-using-geojson-source/)
+            this._map.addModel('turbine0', modelUrl);
+            if (modelUrl2) this._map.addModel('turbine1', modelUrl2);
+
+            this._map.addSource('turbines', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features },
+              promoteId: 'id'
+            });
+
+            // Pre-seed feature-state z=0 to avoid null-type warnings on first paint
+            for (const f of features) {
+              this._map.setFeatureState({ source: 'turbines', id: f.properties.id }, { z: 0 });
+            }
+
+            // Helper to add model layer(s)
+            const addTurbineLayer = (id, typeValue, modelId) => {
+              const filter = (typeValue === null)
+                ? ['boolean', true]
+                : ['==', ['get','type'], String(typeValue)];
+
+              this._map.addLayer({
+                id,
+                type: 'model',
+                source: 'turbines',
+                filter,
+                layout: {
+                  'model-id': modelId
+                },
+                paint: {
+                  // rotation triple: [rx, ry + bearing, rz]
+                  'model-rotation': [rx, ['+', ry, ['get','bearing']], rz],
+                  // z uses feature-state with safe fallback + optional z-offset
+                  'model-translation': [0, 0, ['+', ['coalesce', ['feature-state','z'], 0], zOffset]],
+                  'model-scale': [scale, scale, scale]
+                }
+              });
+            };
+
+            if (modelUrl2) {
+              addTurbineLayer('turbine-layer-type0', '0', 'turbine0');
+              addTurbineLayer('turbine-layer-type1', '1', 'turbine1');
+            } else {
+              addTurbineLayer('turbine-layer', null, 'turbine0');
+            }
+
+            msg.textContent = 'Querying terrain elevations…';
+            // Ensure terrain/source are ready
+            await once(this._map, 'idle');
+
+            // 9) Set real Z from DEM
+            let minLng =  Infinity, minLat =  Infinity, maxLng = -Infinity, maxLat = -Infinity;
+            for (const f of features) {
+              const [lng, lat] = f.geometry.coordinates;
+              const z = this._map.queryTerrainElevation([lng, lat], { exaggerated: false }) || 0; // meters ASL [1](https://docs.mapbox.com/mapbox-gl-js/example/query-terrain-elevation/)
+              this._map.setFeatureState({ source: 'turbines', id: f.properties.id }, { z });
+
+              minLng = Math.min(minLng, lng); minLat = Math.min(minLat, lat);
+              maxLng = Math.max(maxLng, lng); maxLat = Math.max(maxLat, lat);
+              // console.debug(`Placed ${f.properties.id} @ [${lng.toFixed(6)}, ${lat.toFixed(6)}], z=${Math.round(z)} m`);
+            }
+
+            // 10) Fit camera to all turbines (if more than one)
+            if (features.length > 1) {
+              this._map.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
+                padding: 120, pitch: 70, bearing: 20, duration: 1000
+              });
+            }
+
+            msg.textContent = `Loaded ${features.length} turbine(s)`;
+          } catch (e) {
+            console.error(e);
+            msg.textContent = `Error: ${e.message}`;
+          }
+        });
+      } catch (err) {
+        console.error(err);
+        const msg = this.shadowRoot.getElementById('msg');
+        if (msg) msg.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    disconnectedCallback() {
+      if (this._map) {
+        this._map.remove();
+        this._map = null;
+      }
+    }
+  }
+
+  customElements.define('turbine-map', TurbineMap);
+})();"]')].some(l => l.href === href)) return Promise.resolve();
     return new Promise(res => {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
