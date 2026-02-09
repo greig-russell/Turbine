@@ -4,23 +4,45 @@
   <meta charset="utf-8" />
   <title>Turbine Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Mapbox GL JS v3 CSS — explicitly included to avoid missing-CSS warning -->
+  https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.css
+
+  <!-- Mapbox GL JS v3 script (optional here; the component will load it if absent).
+       Keeping it explicit is fine and avoids any race conditions. -->
+  https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js</script>
+
+  <!-- Your web component -->
   <script src="plugins/turbine-map.js"></script>
-  <style>html,body{height:100%;margin:0}</style>
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    /* Make the element fill the viewport */
+    turbine-map { display:block; width: 100vw; height: 100vh; }
+  </style>
 </head>
 <body>
-  <!-- The map will auto-center to the first turbine if "centre" is omitted -->
+
+  <!--
+    Notes:
+      • Omit "centre" to auto-centre to the first turbine (as requested).
+      • Start with a larger scale (e.g., 20) to ensure visibility; tune down to match true dimensions.
+      • rotation-x defaults to 90 to stand models upright; adjust if your GLB uses different axes.
+      • z-offset can lift/lower the model a few meters if its origin is mid-tower.
+  -->
   <turbine-map
     mapbox-token="pk.eyJ1IjoiZ3JlaWdydXNzZWxsIiwiYSI6ImNtbGY0ZjduYTAwdGwzZnNmNWNkbXJ4NTkifQ.5RoqcgVSVJ1gsA6WAXa0YQ"
-    width="100%"
-    height="100%"
     coordinates-url="data/turbines.txt"
     model-url="models/turbine.glb"
-    scale="3"
+    width="100%"
+    height="100%"
+    scale="20"
     rotation-x="90"
     rotation-y="0"
-    rotation-z="0">
+    rotation-z="0"
+    z-offset="0">
   </turbine-map>
+
 </body>
 </html>
-
 
